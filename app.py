@@ -1,9 +1,6 @@
-from flask import Flask, request, render_template
 import sqlite3
 import random
-
-# Initialize the Flask app
-app = Flask(__name__)
+import gradio as gr
 
 # Connect to SQLite database
 def get_db_connection():
@@ -42,29 +39,21 @@ def init_db():
         ''')
         conn.commit()
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# Function to upload course material
+def upload_material(staff_id, material):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO CourseMaterials (staff_id, material) VALUES (?, ?)', (staff_id, material))
+        conn.commit()
+    return "Material uploaded successfully!"
 
-@app.route('/upload', methods=['GET', 'POST'])
-def upload_material():
-    if request.method == 'POST':
-        staff_id = request.form['staff_id']
-        material = request.form['material']
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO CourseMaterials (staff_id, material) VALUES (?, ?)', (staff_id, material))
-            conn.commit()
-        return 'Material uploaded successfully!'
-    return render_template('upload.html')
-
+# Function to generate a question from the material
 def generate_question(material):
     sentences = material.split('.')
     return random.choice(sentences).strip() + '?'
 
-@app.route('/generate_questions', methods=['POST'])
-def generate_questions():
-    material_id = request.form['material_id']
+# Function to generate questions based on material ID
+def generate_questions(material_id):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('SELECT material FROM CourseMaterials WHERE id = ?', (material_id,))
@@ -77,7 +66,7 @@ def generate_questions():
             return f'Question generated: {question}'
     return 'Material not found.'
 
-@app.route('/send_question/<student_id>', methods=['GET'])
+# Function to send a question to a student
 def send_question(student_id):
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -88,12 +77,8 @@ def send_question(student_id):
             return f'Sent question to {student_id}: {question[0]}'
     return 'No questions available.'
 
-@app.route('/submit_answer', methods=['POST'])
-def submit_answer():
-    question_id = request.form['question_id']
-    student_id = request.form['student_id']
-    response = request.form['response']
-    
+# Function to submit an answer
+def submit_answer(question_id, student_id, response):
     # Placeholder for answer verification logic
     is_correct = True  # Replace with actual logic
     
@@ -104,6 +89,42 @@ def submit_answer():
         conn.commit()
     return 'Response submitted successfully!'
 
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
+# Initialize the database
+init_db()
+
+# Create Gradio interfaces
+upload_interface = gr.Interface(
+    fn=upload_material,
+    inputs=[gr.Textbox(label="Staff ID"), gr.Textbox(label="Material")],
+    outputs="text",
+    title="Upload Course Material"
+)
+
+generate_interface = gr.Interface(
+    fn=generate_questions,
+    inputs=gr.Textbox(label="Material ID"),
+    outputs="text",
+    title="Generate Question"
+)
+
+send_interface = gr.Interface(
+    fn=send_question,
+    inputs=gr.Textbox(label="Student ID"),
+    outputs="text",
+    title="Send Question to Student"
+)
+
+submit_interface = gr.Interface(
+    fn=submit_answer,
+    inputs=[
+        gr.Textbox(label="Question ID"),
+        gr.Textbox(label="Student ID"),
+        gr.Textbox(label="Response")
+    ],
+    outputs="text",
+    title="Submit Answer"
+)
+
+# Launch the Gradio app
+if __name__ == "__main__":
+    gr.TabbedInterface([upload_interface, generate_interface, send_interface, submit_interface]).launch()
